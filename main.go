@@ -53,9 +53,9 @@ func assumeRole(adminRoleArn string) (*sts.AssumeRoleOutput, error) {
 
 	assumeRoleInput := &sts.AssumeRoleInput{
 		DurationSeconds: aws.Int64(3600),
-		ExternalId:      aws.String("eks-workshop"),
+		ExternalId:      aws.String("cfn-custom-resource-configmap"),
 		RoleArn:         aws.String(adminRoleArn),
-		RoleSessionName: aws.String("eks-workshop"),
+		RoleSessionName: aws.String("cfn-custom-resource-configmap"),
 	}
 
 	assumeRoleOutput, err := stsSvc.AssumeRole(assumeRoleInput)
