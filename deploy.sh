@@ -9,4 +9,4 @@ zip cfn-eks-custom-resource-configmap.zip ./main
 
 aws s3 cp cfn-eks-custom-resource-configmap.zip s3://$BUCKET_NAME/cfn-eks-custom-resource-configmap.zip
 
-aws s3api put-object-acl --bucket $BUCKET_NAME -name --key cfn-eks-custom-resource-configmap.zip --acl public-readc
+aws s3api put-object-tagging --bucket $BUCKET_NAME --key cfn-eks-custom-resource-configmap.zip --tagging 'TagSet={Key=public,Value=yes}'
