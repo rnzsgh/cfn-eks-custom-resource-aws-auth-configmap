@@ -123,6 +123,8 @@ func createConfigMap(
 		return nil, errors.Wrap(err, "Unable create ConfigMap data")
 	}
 
+	log.Info("Config map: " + string(spec))
+
 	cm := &v1.ConfigMap{}
 	d := serializer.NewCodecFactory(runtime.NewScheme()).UniversalDeserializer()
 	if _, _, err := d.Decode(spec, nil, cm); err != nil {
@@ -207,7 +209,7 @@ func createAwsAuthConfigMap(event cfn.Event) error {
 var configMapTemplateStr = `apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: aws-auth
+	name: aws-auth
   namespace: kube-system
 data:
   mapRoles: |
