@@ -87,7 +87,7 @@ func createSession(asssumeRoleOutput *sts.AssumeRoleOutput) (*session.Session, e
 }
 
 // Parse and set the values in the YAML spec
-func createConfigMapData(nodeInstanceRoleArn, codeBuildServiceRoleArn, accountId, adminUser string) ([]byte, error) {
+func createConfigMapData(nodeInstanceRoleArn, accountId, adminUser string) ([]byte, error) {
 
 	configMapTemplate, err := template.New("configMap").Parse(configMapTemplateStr)
 	if err != nil {
@@ -97,7 +97,6 @@ func createConfigMapData(nodeInstanceRoleArn, codeBuildServiceRoleArn, accountId
 	varmap := map[string]interface{}{
 		"NodeInstanceRoleArn": nodeInstanceRoleArn,
 		"EC2PrivateDNSName":   "{{EC2PrivateDNSName}}",
-		"CodeBuildRoleArn":    codeBuildServiceRoleArn,
 		"AdminUserArn":        fmt.Sprintf("arn:aws:iam::%s:user/%s", accountId, adminUser),
 		"AdminUser":           adminUser,
 	}
@@ -116,11 +115,10 @@ func createConfigMapData(nodeInstanceRoleArn, codeBuildServiceRoleArn, accountId
 func createConfigMap(
 	clusterName,
 	nodeInstanceRoleArn,
-	codeBuildServiceRoleArn,
 	accountId,
 	adminUser string) (*v1.ConfigMap, error) {
 
-	spec, err := createConfigMapData(nodeInstanceRoleArn, codeBuildServiceRoleArn, accountId, adminUser)
+	spec, err := createConfigMapData(nodeInstanceRoleArn, accountId, adminUser)
 	if err != nil {
 		return nil, errors.Wrap(err, "Unable create ConfigMap data")
 	}
@@ -188,14 +186,13 @@ func createAwsAuthConfigMap(event cfn.Event) error {
 	clusterEndpoint, _ := event.ResourceProperties["ClusterEndpoint"].(string)
 	adminUser, _ := event.ResourceProperties["AdminUser"].(string)
 	nodeInstanceRoleArn, _ := event.ResourceProperties["NodeInstanceRoleArn"].(string)
-	codeBuildServiceRoleArn, _ := event.ResourceProperties["CodeBuildServiceRoleArn"].(string)
 
 	clientset, err := initClientset(clusterName, clusterEndpoint, adminRoleArn)
 	if err != nil {
 		return errors.Wrap(err, "clientset init failed")
 	}
 
-	if configMap, err := createConfigMap(clusterName, nodeInstanceRoleArn, codeBuildServiceRoleArn, accountId, adminUser); err != nil {
+	if configMap, err := createConfigMap(clusterName, nodeInstanceRoleArn, accountId, adminUser); err != nil {
 		return errors.Wrap(err, "Unable to create cofig map local data")
 	} else {
 		_, err = clientset.CoreV1().ConfigMaps("kube-system").Create(configMap)
@@ -219,10 +216,6 @@ data:
       groups:
         - system:bootstrappers
         - system:nodes
-    - rolearn: {{.CodeBuildRoleArn}}
-      username: code-build
-      groups:
-        - system:masters
   mapUsers: |
     - userarn: {{.AdminUserArn}}
       username: {{.AdminUser}}
