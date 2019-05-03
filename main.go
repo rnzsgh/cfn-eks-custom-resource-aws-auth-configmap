@@ -209,7 +209,7 @@ func createAwsAuthConfigMap(event cfn.Event) error {
 var configMapTemplateStr = `apiVersion: v1
 kind: ConfigMap
 metadata:
-	name: aws-auth
+  name: aws-auth
   namespace: kube-system
 data:
   mapRoles: |
