@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"text/template"
@@ -16,17 +17,21 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/eks"
 	"github.com/aws/aws-sdk-go/service/sts"
+	log "github.com/golang/glog"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	clientset "k8s.io/client-go/kubernetes"
 )
 
+func init() {
+	flag.Parse()
+	flag.Lookup("logtostderr").Value.Set("true")
+}
+
 // Run the Lambda
 func main() {
-	log.SetLevel(log.WarnLevel)
 	lambda.Start(cfn.LambdaWrap(handler))
 }
 
@@ -39,7 +44,7 @@ func handler(ctx context.Context, event cfn.Event) (physicalResourceID string, d
 
 	if event.RequestType == "Create" {
 		if err = createAwsAuthConfigMap(event); err != nil {
-			log.Error(err, "Unable to create aws-auth ConfigMap")
+			log.Errorf("Unable to create aws-auth ConfigMap - reason: %v", err)
 		}
 	}
 
@@ -47,21 +52,21 @@ func handler(ctx context.Context, event cfn.Event) (physicalResourceID string, d
 }
 
 // Assume the role that created the stack
-func assumeRole(adminRoleArn string) (*sts.AssumeRoleOutput, error) {
+func assumeRole(createRoleArn string) (*sts.AssumeRoleOutput, error) {
 
 	stsSvc := sts.New(session.New())
 
 	assumeRoleInput := &sts.AssumeRoleInput{
 		DurationSeconds: aws.Int64(3600),
 		ExternalId:      aws.String("cfn-custom-resource-configmap"),
-		RoleArn:         aws.String(adminRoleArn),
+		RoleArn:         aws.String(createRoleArn),
 		RoleSessionName: aws.String("cfn-custom-resource-configmap"),
 	}
 
 	assumeRoleOutput, err := stsSvc.AssumeRole(assumeRoleInput)
 
 	if err != nil {
-		return nil, errors.Wrap(err, "Unable to assume role: "+adminRoleArn)
+		return nil, errors.Wrap(err, "Unable to assume role: "+createRoleArn)
 	}
 
 	return assumeRoleOutput, nil
@@ -87,7 +92,7 @@ func createSession(asssumeRoleOutput *sts.AssumeRoleOutput) (*session.Session, e
 }
 
 // Parse and set the values in the YAML spec
-func createConfigMapData(nodeInstanceRoleArn, accountId, adminUser string) ([]byte, error) {
+func createConfigMapData(nodeInstanceRoleArn, accountId, adminUser, adminRoleArn string) ([]byte, error) {
 
 	configMapTemplate, err := template.New("configMap").Parse(configMapTemplateStr)
 	if err != nil {
@@ -99,6 +104,7 @@ func createConfigMapData(nodeInstanceRoleArn, accountId, adminUser string) ([]by
 		"EC2PrivateDNSName":   "{{EC2PrivateDNSName}}",
 		"AdminUserArn":        fmt.Sprintf("arn:aws:iam::%s:user/%s", accountId, adminUser),
 		"AdminUser":           adminUser,
+		"AdminRoleArn":        adminRoleArn,
 	}
 
 	var b bytes.Buffer
@@ -116,14 +122,15 @@ func createConfigMap(
 	clusterName,
 	nodeInstanceRoleArn,
 	accountId,
-	adminUser string) (*v1.ConfigMap, error) {
+	adminUser,
+	adminRoleArn string) (*v1.ConfigMap, error) {
 
-	spec, err := createConfigMapData(nodeInstanceRoleArn, accountId, adminUser)
+	spec, err := createConfigMapData(nodeInstanceRoleArn, accountId, adminUser, adminRoleArn)
 	if err != nil {
 		return nil, errors.Wrap(err, "Unable create ConfigMap data")
 	}
 
-	log.Info("Config map: " + string(spec))
+	log.Infof("Config map: %s", string(spec))
 
 	cm := &v1.ConfigMap{}
 	d := serializer.NewCodecFactory(runtime.NewScheme()).UniversalDeserializer()
@@ -146,14 +153,14 @@ func lookupClusterCa(clusterName string) (string, error) {
 }
 
 // Assume the correct role, create the session and auth with K8S
-func initClientset(clusterName, clusterEndpoint, adminRoleArn string) (*clientset.Clientset, error) {
+func initClientset(clusterName, clusterEndpoint, createRoleArn string) (*clientset.Clientset, error) {
 
 	clusterCa, err := lookupClusterCa(clusterName)
 	if err != nil {
 		return nil, errors.Wrap(err, "Unable to load cluster ca")
 	}
 
-	asssumeRoleOutput, err := assumeRole(adminRoleArn)
+	asssumeRoleOutput, err := assumeRole(createRoleArn)
 	if err != nil {
 		return nil, errors.Wrap(err, "Unable to assume role")
 	}
@@ -183,18 +190,19 @@ func initClientset(clusterName, clusterEndpoint, adminRoleArn string) (*clientse
 func createAwsAuthConfigMap(event cfn.Event) error {
 
 	accountId, _ := event.ResourceProperties["AccountId"].(string)
-	adminRoleArn := event.ResourceProperties["AdminRoleArn"].(string)
+	createRoleArn := event.ResourceProperties["CreateRoleArn"].(string)
 	clusterName, _ := event.ResourceProperties["ClusterName"].(string)
 	clusterEndpoint, _ := event.ResourceProperties["ClusterEndpoint"].(string)
 	adminUser, _ := event.ResourceProperties["AdminUser"].(string)
+	adminRoleArn, _ := event.ResourceProperties["AdminRoleArn"].(string)
 	nodeInstanceRoleArn, _ := event.ResourceProperties["NodeInstanceRoleArn"].(string)
 
-	clientset, err := initClientset(clusterName, clusterEndpoint, adminRoleArn)
+	clientset, err := initClientset(clusterName, clusterEndpoint, createRoleArn)
 	if err != nil {
 		return errors.Wrap(err, "clientset init failed")
 	}
 
-	if configMap, err := createConfigMap(clusterName, nodeInstanceRoleArn, accountId, adminUser); err != nil {
+	if configMap, err := createConfigMap(clusterName, nodeInstanceRoleArn, accountId, adminUser, adminRoleArn); err != nil {
 		return errors.Wrap(err, "Unable to create cofig map local data")
 	} else {
 		_, err = clientset.CoreV1().ConfigMaps("kube-system").Create(configMap)
@@ -218,6 +226,10 @@ data:
       groups:
         - system:bootstrappers
         - system:nodes
+    - rolearn: {{.AdminRoleArn}}
+	      username: admin-role
+	      groups:
+	        - system:masters
   mapUsers: |
     - userarn: {{.AdminUserArn}}
       username: {{.AdminUser}}
