@@ -6,14 +6,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"os"
 	"text/template"
 
 	"github.com/aws/aws-lambda-go/cfn"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-lambda-go/lambdacontext"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/eks"
 	"github.com/aws/aws-sdk-go/service/sts"
@@ -73,6 +71,7 @@ func assumeRole(createRoleArn string) (*sts.AssumeRoleOutput, error) {
 }
 
 // Create the AWS session based on the assumed role credentials
+/*
 func createSession(asssumeRoleOutput *sts.AssumeRoleOutput) (*session.Session, error) {
 	session, err := session.NewSession(
 		&aws.Config{
@@ -90,6 +89,7 @@ func createSession(asssumeRoleOutput *sts.AssumeRoleOutput) (*session.Session, e
 
 	return session, nil
 }
+*/
 
 // Parse and set the values in the YAML spec
 func createConfigMapData(nodeInstanceRoleArn, accountId, adminUser, adminRoleArn string) ([]byte, error) {
@@ -160,22 +160,25 @@ func initClientset(clusterName, clusterEndpoint, createRoleArn string) (*clients
 		return nil, errors.Wrap(err, "Unable to load cluster ca")
 	}
 
-	asssumeRoleOutput, err := assumeRole(createRoleArn)
-	if err != nil {
-		return nil, errors.Wrap(err, "Unable to assume role")
-	}
-
-	session, err := createSession(asssumeRoleOutput)
-	if err != nil {
-		return nil, errors.Wrap(err, "Unable to create session")
-	}
+	/*
+		asssumeRoleOutput, err := assumeRole(createRoleArn)
+		if err != nil {
+			return nil, errors.Wrap(err, "Unable to assume role")
+		}
+	*/
+	/*
+		session, err := createSession(asssumeRoleOutput)
+		if err != nil {
+			return nil, errors.Wrap(err, "Unable to create session")
+		}
+	*/
 
 	clientset, err := NewAuthClient(
 		&ClusterConfig{
 			ClusterName:              clusterName,
 			MasterEndpoint:           clusterEndpoint,
 			CertificateAuthorityData: clusterCa,
-			Session:                  session,
+			Session:                  session.Must(session.NewSession()),
 		},
 	)
 
