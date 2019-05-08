@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"text/template"
+	"time"
 
 	"github.com/aws/aws-lambda-go/cfn"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -152,13 +153,29 @@ func createAwsAuthConfigMap(event cfn.Event) error {
 	if configMap, err := createConfigMap(clusterName, nodeInstanceRoleArn, accountId, adminUser, adminRoleArn); err != nil {
 		return errors.Wrap(err, "Unable to create cofig map local data")
 	} else {
-		_, err = clientset.CoreV1().ConfigMaps("kube-system").Create(configMap)
+		err = retry(func() error {
+			_, err = clientset.CoreV1().ConfigMaps("kube-system").Create(configMap)
+			return err
+		})
+
 		if err != nil {
 			return errors.Wrap(err, "Error creating ConfigMap on cluster")
 		}
 	}
 
 	return nil
+}
+
+func retry(call func() error) error {
+	var err error
+	for i := 0; i < 3; i++ {
+		if err = call(); err != nil {
+			time.Sleep(5 * time.Second)
+		} else {
+			return nil
+		}
+	}
+	return err
 }
 
 var configMapTemplateStr = `apiVersion: v1
