@@ -14,7 +14,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/eks"
-	"github.com/aws/aws-sdk-go/service/sts"
 	log "github.com/golang/glog"
 	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
@@ -48,48 +47,6 @@ func handler(ctx context.Context, event cfn.Event) (physicalResourceID string, d
 
 	return
 }
-
-// Assume the role that created the stack
-func assumeRole(createRoleArn string) (*sts.AssumeRoleOutput, error) {
-
-	stsSvc := sts.New(session.New())
-
-	assumeRoleInput := &sts.AssumeRoleInput{
-		DurationSeconds: aws.Int64(3600),
-		ExternalId:      aws.String("cfn-custom-resource-configmap"),
-		RoleArn:         aws.String(createRoleArn),
-		RoleSessionName: aws.String("cfn-custom-resource-configmap"),
-	}
-
-	assumeRoleOutput, err := stsSvc.AssumeRole(assumeRoleInput)
-
-	if err != nil {
-		return nil, errors.Wrap(err, "Unable to assume role: "+createRoleArn)
-	}
-
-	return assumeRoleOutput, nil
-}
-
-// Create the AWS session based on the assumed role credentials
-/*
-func createSession(asssumeRoleOutput *sts.AssumeRoleOutput) (*session.Session, error) {
-	session, err := session.NewSession(
-		&aws.Config{
-			Region: aws.String(os.Getenv("AWS_REGION")),
-			Credentials: credentials.NewStaticCredentials(
-				*asssumeRoleOutput.Credentials.AccessKeyId,
-				*asssumeRoleOutput.Credentials.SecretAccessKey,
-				*asssumeRoleOutput.Credentials.SessionToken),
-		},
-	)
-
-	if err != nil {
-		return nil, errors.Wrap(err, "Unable to create session")
-	}
-
-	return session, nil
-}
-*/
 
 // Parse and set the values in the YAML spec
 func createConfigMapData(nodeInstanceRoleArn, accountId, adminUser, adminRoleArn string) ([]byte, error) {
@@ -160,19 +117,6 @@ func initClientset(clusterName, clusterEndpoint, createRoleArn string) (*clients
 		return nil, errors.Wrap(err, "Unable to load cluster ca")
 	}
 
-	/*
-		asssumeRoleOutput, err := assumeRole(createRoleArn)
-		if err != nil {
-			return nil, errors.Wrap(err, "Unable to assume role")
-		}
-	*/
-	/*
-		session, err := createSession(asssumeRoleOutput)
-		if err != nil {
-			return nil, errors.Wrap(err, "Unable to create session")
-		}
-	*/
-
 	clientset, err := NewAuthClient(
 		&ClusterConfig{
 			ClusterName:              clusterName,
@@ -230,9 +174,9 @@ data:
         - system:bootstrappers
         - system:nodes
     - rolearn: {{.AdminRoleArn}}
-	      username: admin-role
-	      groups:
-	        - system:masters
+      username: admin-role
+      groups:
+        - system:masters
   mapUsers: |
     - userarn: {{.AdminUserArn}}
       username: {{.AdminUser}}
