@@ -1,4 +1,4 @@
-cfn-eks-custom-resource-configmap
+cfn-eks-custom-resource-aws-auth-configmap
 *.zip
 *.swp
 main

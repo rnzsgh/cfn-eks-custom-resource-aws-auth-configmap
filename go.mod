@@ -1,4 +1,4 @@
-module github.com/rnzsgh/cfn-eks-custom-resource-configmap
+module github.com/rnzsgh/cfn-eks-custom-resource-aws-auth-configmap
 
 require (
 	github.com/aws/aws-lambda-go v1.10.0
