@@ -20,8 +20,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/eks"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/aws/aws-sdk-go/service/sts/stsiface"
+	log "github.com/golang/glog"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	clientset "k8s.io/client-go/kubernetes"
 )
 
@@ -63,23 +63,22 @@ func (c *ClusterConfig) loadConfig() error {
 		Name: aws.String(c.ClusterName),
 	}
 
-	log.WithField("cluster", c.ClusterName).Info("Looking up EKS cluster")
+	log.Infof("Looking up EKS cluster: %s", c.ClusterName)
 
 	result, err := svc.DescribeCluster(input)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
-			log.WithField("cluster", c.ClusterName).Error(aerr.Error())
+			log.Errorf("Cannot describe cluster: %s - reason: %v", c.ClusterName, aerr.Error())
 			return errors.Wrap(err, aerr.Error())
 		} else {
 			// Print the error, cast err to awserr.Error to get the Code and
 			// Message from an error.
-			log.WithField("cluster", c.ClusterName).Error(err.Error())
+			log.Errorf("Cannot describe cluster: %s - reason: %v", c.ClusterName, err.Error())
 			return errors.Wrap(err, err.Error())
 		}
 	}
 
-	log.WithField("cluster", c.ClusterName).Info("Found cluster")
-	log.WithField("cluster", result.Cluster).Debug("Cluster details")
+	log.Infof("Found cluster - name: %s", c.ClusterName)
 
 	c.MasterEndpoint = *result.Cluster.Endpoint
 	c.CertificateAuthorityData = *result.Cluster.CertificateAuthority.Data
@@ -153,7 +152,7 @@ func checkAuth(stsAPI stsiface.STSAPI) (string, error) {
 		return "", errors.Wrap(err, "checking AWS STS access – cannot get role ARN for current session")
 	}
 	iamRoleARN := *output.Arn
-	log.Debugf("role ARN for the current session is %s", iamRoleARN)
+	log.Infof("role ARN for the current session is %s", iamRoleARN)
 	return iamRoleARN, nil
 }
 
@@ -198,7 +197,7 @@ func (c *ClientConfig) WithEmbeddedToken() (*ClientConfig, error) {
 	x := c.Client.AuthInfos[c.ContextName]
 	x.Token = tok.Token
 
-	log.WithField("token", tok).Debug("Successfully generated token")
+	log.Infof("Successfully generated token")
 	return &clientConfigCopy, nil
 }
 
